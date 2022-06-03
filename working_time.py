@@ -1,5 +1,7 @@
 import datetime as dt
 import glob
+import lovely_logger as logging
+import streamlit as st
 
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
@@ -43,11 +45,11 @@ def get_start_end_duration_ntasks_day(filename):
     end_times = []
     day_duration = dt.timedelta(seconds=0)
     root = load(filename)
-    # print(f"file {filename} has {len(root.children)} items")
+    logging.info(f"file {filename} has {len(root.children)} items")
     for item in root.children:
-        # print(f"Got item  <{item.heading}>")
+        logging.info(f"Got item  <{item.heading}>")
         if not is_done(item):
-            print(f"warning: item  <{item.heading}> not done yet!")
+            logging.warning(f"item  <{item.heading}> not done yet!")
 
         start, end, duration = get_start_end_duration_item(item)
         if isinstance(duration, dt.timedelta):
@@ -69,14 +71,14 @@ def get_start_end_duration_item(item):
     start_times = []
     end_times = []
     if not clocks:
-        # print(f"warning item <{item.heading}> has no times")
+        logging.warning(f"item <{item.heading}> has no times")
         return -1, -1, -1
 
     for c in clocks:
         duration += c.duration
         start_times.append(c.start)
         end_times.append(c.end)
-        # print(item.heading, c.start, c.duration)
+        logging.info(item.heading, c.start, c.duration)
 
     start_times.sort()
     end_times.sort()
@@ -118,7 +120,7 @@ if __name__ == '__main__':
     dates = []
     tasks = []
     for filename in files:
-        start, end, duration, num_tasks = get_start_end_duration_ntasks_day(filename)    
+        start, end, duration, num_tasks = get_start_end_duration_ntasks_day(filename)
         if isinstance(duration, dt.timedelta):
             durations.append(duration.seconds)
             dates.append(start.date())
