@@ -1,0 +1,6 @@
+streamlit==1.9
+lovely-logger
+matplotlib
+numpy
+scipy
+plotly
