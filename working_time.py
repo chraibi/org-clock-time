@@ -67,6 +67,7 @@ def seconds_time(seconds):
 def get_start_end_duration_ntasks_day(filename):
     start_times = []
     end_times = []
+    tags = []
     day_duration = dt.timedelta(seconds=0)
     root = load(filename)
     logging.info(f"file {filename} has {len(root.children)} items")
@@ -76,20 +77,37 @@ def get_start_end_duration_ntasks_day(filename):
         if not is_done(item):
             logging.warning(f"item  <{item.heading}> not done yet!")
             logging.warning(f"\tday  <{day}>")
-            continue
+            # children of children
+            for c in item.children:
+                logging.info(f"Got subitem item  <{c.heading}>")
+                if not is_done(c):
+                    logging.warning(f"item  <{c.heading}> not done yet!")
+                    continue
+            
+                start, end, duration, tag = get_start_end_duration_item(c)
+                if isinstance(duration, dt.timedelta):
+                    #print(f"start {start}, end {end},  duration {duration}")
+                    start_times.append(start)
+                    end_times.append(end)
+                    day_duration += duration
+                    tags.append(tag)
+                    
 
-        start, end, duration = get_start_end_duration_item(item)
+        start, end, duration, tag = get_start_end_duration_item(item)
         if isinstance(duration, dt.timedelta):
             start_times.append(start)
             end_times.append(end)
             day_duration += duration
+            tags.append(tag)
+
+        
 
     start_times.sort()
     end_times.sort()
     if start_times and end_times:
-        return start_times[0], end_times[-1], day_duration, len(root.children)
+        return start_times[0], end_times[-1], day_duration, len(root.children), tags
 
-    return -1, -1, -1, -1
+    return -1, -1, -1, -1, []
 
 
 def get_start_end_duration_item(item):
@@ -97,26 +115,28 @@ def get_start_end_duration_item(item):
     duration = dt.timedelta(seconds=0)
     start_times = []
     end_times = []
+    tag = item.heading.split(":")[-1]
+    logging.info(f"item {item.heading} Tag: <{tag}>")
     if not clocks:
         logging.warning(f"item <{item.heading}> has no times")
-        return -1, -1, -1
+        return -1, -1, -1, []
 
     for c in clocks:
         duration += c.duration
         start_times.append(c.start)
         end_times.append(c.end)
-        logging.info(f">> <{item.heading}>, {c.start}, {c.duration}")
+        logging.info(f">> <{item.heading}>, start {c.start}, {c.duration}")
 
     start_times.sort()
     end_times.sort()
-    return start_times[0], end_times[-1], duration
+    return start_times[0], end_times[-1], duration, tag
 
 
 @st.cache(suppress_st_warning=True, hash_funcs={go.Figure: lambda _: None})
 def plot_histogram(df, nbins):
     hist = px.histogram(
         df,
-        x="dates",
+        x="date",
         y="tasks",
         # marginal="rug",
         hover_data=df.columns,
@@ -153,6 +173,31 @@ def plot_durations(dates, durations):
     return fig
 
 
+@st.cache(suppress_st_warning=True, hash_funcs={go.Figure: lambda _: None})
+def plot_field(dates, y, ytext):
+    
+    fig = make_subplots(
+        rows=1,
+        cols=1,
+        # subplot_titles=[f"<b>{title}</b>"],
+        x_title="Day",
+        y_title=ytext,
+    )
+
+    trace = go.Scatter(
+        x=dates,
+        y=y,
+        mode="lines+markers",
+        showlegend=False,
+        line=dict(width=3),
+        marker=dict(size=10),
+    )
+    fig.append_trace(trace, row=1, col=1)
+    fig.update_layout(hovermode="x")
+    return fig
+
+
+
 if __name__ == "__main__":
     st.set_page_config(
         page_title="Org-working times",
@@ -173,17 +218,16 @@ if __name__ == "__main__":
     years = []
     months = []
     days = []
-    genre = st.radio(
-     "Aggregate",
-     ('Daily', 'Monthly', 'Yearly'))
-    
+    tags = []
+    #genre = st.radio("Aggregate", ("Daily", "Monthly", "Yearly"))
+    files_df = []
     for filename in files:
         date = filename.split("/")[-1].split(".org")[0]
         month = date.split("-")[1]
         year = date.split("-")[0]
         day = date.split("-")[2]
-        logging.info(f"DDDD {day}, {month}, {year}")
-        start, end, duration, num_tasks = get_start_end_duration_ntasks_day(filename)
+        
+        start, end, duration, num_tasks, tag_per_day = get_start_end_duration_ntasks_day(filename)
         if isinstance(duration, dt.timedelta):
             days.append(day)
             years.append(year)
@@ -191,19 +235,24 @@ if __name__ == "__main__":
             durations.append(duration.seconds)
             dates.append(start.date())
             tasks.append(num_tasks)
-            end_times.append(end)
-            start_times.append(start)
-    
+            end_times.append(end.hour)
+            start_times.append(start.hour)
+            tags.append(tag_per_day)
+            files_df.append(filename.split("/")[-1])
+        else:
+            logging.warning(f"hmm {filename}")
     df = pd.DataFrame(
         {
+            "files": files_df,
             "date": dates,
             "year": years,
             "month": months,
             "day": days,
             "start": start_times,
             "end": end_times,
-            "duration": [d//3600 for d in durations],
+            "duration": [d // 3600 for d in durations],
             "tasks": tasks,
+            # "tags": tags
         }
     )
     fig2 = plot_durations(dates, durations)
@@ -216,34 +265,51 @@ if __name__ == "__main__":
     nbins = st.slider(
         "Number of bins", 10, 100, value=90, help="Number of bins", key="hist"
     )
-    
+
     fig1 = plot_histogram(df, nbins)
     st.plotly_chart(fig1, use_container_width=True)
-    st.header("Summary")
+    st.markdown("--------")
     c1, c2 = st.columns((1, 1))
-    c1.dataframe(df)
-
-    monthly = df.groupby(['month', 'year'])
-    months = monthly.groups.keys()
-    choose_month = c2.selectbox(
-        'Month',
-        months)
-    choose_field = c2.selectbox(
-        'Field',
-        ('duration', 'tasks'))
-    d_mean, d_std, d_sum, d_min, d_max = monthly.get_group(choose_month)[choose_field].agg([np.mean, np.std, np.sum, np.min, np.max])
-    count = monthly.get_group(choose_month)[choose_field].count()
     
-    c2.write(f"## Date {choose_month[0]}/{choose_month[1]}")
-    c2.write(f"#### {choose_field}")
-    c2.write(f"""
+    monthly = df.groupby(["month", "year"])
+    months = monthly.groups.keys()
+    choose_month = c1.selectbox("Month", months)
+    choose_field = c2.selectbox("Field", ("duration", "tasks", "start", "end"))
+    d_mean, d_std, d_sum, d_min, d_max = monthly.get_group(choose_month)[
+        choose_field
+    ].agg([np.mean, np.std, np.sum, np.min, np.max])
+
+    fig = plot_field(monthly.get_group(choose_month)["date"],
+                     monthly.get_group(choose_month)[choose_field],
+                     choose_field)
+    c2.plotly_chart(fig, use_container_width=True)
+
+    count = monthly.get_group(choose_month)[choose_field].count()
+
+    c1.write(f"## Date {choose_month[0]}/{choose_month[1]}")
+    c1.write(f"#### {choose_field}")
+    c1.write(
+        f"""
     - working days: {count}
     - sum: {d_sum}
     - min: {d_min}
     - max: {d_max}
-    - mean: {d_mean:.2f}   ($\pm$ {d_std:.2f})    
-    """)
+    - mean: {d_mean:.2f}   ($\pm$ {d_std:.2f})
+    """
+    )
 
-    c2.code(monthly.get_group(choose_month))
-    
-    
+    #c1.code(monthly.get_group(choose_month)[choose_field] )
+
+
+    st.header("Summary")
+    st.dataframe(df)
+
+    # def file_selector(folder_path='.'):
+    #     filenames = os.listdir(folder_path)
+    #     selected_filename = st.selectbox('Select a file', filenames)
+    #     return os.path.join(folder_path, selected_filename)
+
+    # user_input = st.text_input("Paste the directory of your audio file")
+    # if len(user_input) != 0:
+    #     src = file_selector(folder_path=user_input)
+    #     st.code(src)
