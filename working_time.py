@@ -272,7 +272,9 @@ if __name__ == "__main__":
     c1, c2 = st.columns((1, 1))
     
     monthly = df.groupby(["month", "year"])
-    months = monthly.groups.keys()
+    months =   monthly.groups.keys()
+    #months.extend(('04', '2022'))
+    
     choose_month = c1.selectbox("Month", months)
     choose_field = c2.selectbox("Field", ("duration", "tasks", "start", "end"))
     d_mean, d_std, d_sum, d_min, d_max = monthly.get_group(choose_month)[
@@ -282,8 +284,11 @@ if __name__ == "__main__":
     fig = plot_field(monthly.get_group(choose_month)["date"],
                      monthly.get_group(choose_month)[choose_field],
                      choose_field)
-    c2.plotly_chart(fig, use_container_width=True)
-
+    c2.plotly_chart(fig, use_container_width=True)    
+    fig = plot_field(np.unique(df["month"]),
+                     df.groupby("month")[choose_field].mean(),
+                     choose_field)
+    c1.plotly_chart(fig, use_container_width=True)
     count = monthly.get_group(choose_month)[choose_field].count()
 
     c1.write(f"## Date {choose_month[0]}/{choose_month[1]}")
