@@ -26,7 +26,6 @@ ROOT_DIR = path.parent.absolute()
 home_path = str(Path.home())
 
 
-
 @st.cache
 def init_logger():
     T = dt.datetime.now()
@@ -114,28 +113,21 @@ def get_start_end_duration_item(item):
 
 
 @st.cache(suppress_st_warning=True, hash_funcs={go.Figure: lambda _: None})
-def plot_histogram(dates, tasks, nbins):
-    df_dates = pd.DataFrame(data = dates)
-    df_tasks = pd.DataFrame(data = tasks)
-    data = pd.concat([df_dates, df_tasks])
-    df = pd.DataFrame(
-        {'dates': dates,
-         'tasks': tasks,
-         }
-    )    
+def plot_histogram(df, nbins):
     hist = px.histogram(
         df,
         x="dates",
         y="tasks",
-        #marginal="rug",
+        # marginal="rug",
         hover_data=df.columns,
         labels={"waiting": "Waiting time"},
         text_auto=True,
         nbins=nbins,
-        #title=f'<b>Maximal waiting time: {maxt:.2f} [s]</b>',
+        # title=f'<b>Maximal waiting time: {maxt:.2f} [s]</b>',
     )
     hist.update_layout(bargap=0.2)
     return hist
+
 
 @st.cache(suppress_st_warning=True, hash_funcs={go.Figure: lambda _: None})
 def plot_durations(dates, durations):
@@ -143,11 +135,11 @@ def plot_durations(dates, durations):
     fig = make_subplots(
         rows=1,
         cols=1,
-        #subplot_titles=[f"<b>{title}</b>"],
+        # subplot_titles=[f"<b>{title}</b>"],
         x_title="Day",
         y_title="Duration / h",
     )
-    
+
     trace = go.Scatter(
         x=dates,
         y=durations_hour,
@@ -156,12 +148,12 @@ def plot_durations(dates, durations):
         line=dict(width=3),
         marker=dict(size=10),
     )
-    fig.append_trace(trace, row=1, col=1)        
+    fig.append_trace(trace, row=1, col=1)
     fig.update_layout(hovermode="x")
     return fig
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     st.set_page_config(
         page_title="Org-working times",
         page_icon=":bar_chart:",
@@ -176,27 +168,82 @@ if __name__ == '__main__':
     durations = []
     dates = []
     tasks = []
+    start_times = []
+    end_times = []
+    years = []
+    months = []
+    days = []
+    genre = st.radio(
+     "Aggregate",
+     ('Daily', 'Monthly', 'Yearly'))
+    
     for filename in files:
+        date = filename.split("/")[-1].split(".org")[0]
+        month = date.split("-")[1]
+        year = date.split("-")[0]
+        day = date.split("-")[2]
+        logging.info(f"DDDD {day}, {month}, {year}")
         start, end, duration, num_tasks = get_start_end_duration_ntasks_day(filename)
         if isinstance(duration, dt.timedelta):
+            days.append(day)
+            years.append(year)
+            months.append(month)
             durations.append(duration.seconds)
             dates.append(start.date())
             tasks.append(num_tasks)
-
-            
+            end_times.append(end)
+            start_times.append(start)
+    
+    df = pd.DataFrame(
+        {
+            "date": dates,
+            "year": years,
+            "month": months,
+            "day": days,
+            "start": start_times,
+            "end": end_times,
+            "duration": [d//3600 for d in durations],
+            "tasks": tasks,
+        }
+    )
     fig2 = plot_durations(dates, durations)
     t = make_title(durations)
     st.header(t)
     st.plotly_chart(fig2, use_container_width=True)
 
     # histogram
+    st.header("Tasks per day")
     nbins = st.slider(
-            "Number of bins", 10, 100, value=50, help="Number of bins", key="hist"
-        )
+        "Number of bins", 10, 100, value=90, help="Number of bins", key="hist"
+    )
     
-    fig1 = plot_histogram(dates, tasks, nbins)
-    
+    fig1 = plot_histogram(df, nbins)
     st.plotly_chart(fig1, use_container_width=True)
+    st.header("Summary")
+    c1, c2 = st.columns((1, 1))
+    c1.dataframe(df)
 
+    monthly = df.groupby(['month', 'year'])
+    months = monthly.groups.keys()
+    choose_month = c2.selectbox(
+        'Month',
+        months)
+    choose_field = c2.selectbox(
+        'Field',
+        ('duration', 'tasks'))
+    d_mean, d_std, d_sum, d_min, d_max = monthly.get_group(choose_month)[choose_field].agg([np.mean, np.std, np.sum, np.min, np.max])
+    count = monthly.get_group(choose_month)[choose_field].count()
+    
+    c2.write(f"## Date {choose_month[0]}/{choose_month[1]}")
+    c2.write(f"#### {choose_field}")
+    c2.write(f"""
+    - working days: {count}
+    - sum: {d_sum}
+    - min: {d_min}
+    - max: {d_max}
+    - mean: {d_mean:.2f}   ($\pm$ {d_std:.2f})    
+    """)
+
+    c2.code(monthly.get_group(choose_month))
     
     
