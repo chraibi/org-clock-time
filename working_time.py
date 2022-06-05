@@ -1,18 +1,19 @@
-import os
 import datetime as dt
 import glob
-import lovely_logger as logging
-import streamlit as st
+import os
 from pathlib import Path
-import plotly.graph_objs as go
-import plotly.express as px
-import pandas as pd
-from plotly.subplots import make_subplots
 
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
+import lovely_logger as logging
+
+# import matplotlib.dates as mdates
+# import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objs as go
+import streamlit as st
 from orgparse import load
+from plotly.subplots import make_subplots
 
 org_time_format = "%Y-%m-%d"
 
@@ -83,15 +84,14 @@ def get_start_end_duration_ntasks_day(filename):
                 if not is_done(c):
                     logging.warning(f"item  <{c.heading}> not done yet!")
                     continue
-            
+
                 start, end, duration, tag = get_start_end_duration_item(c)
                 if isinstance(duration, dt.timedelta):
-                    #print(f"start {start}, end {end},  duration {duration}")
+                    # print(f"start {start}, end {end},  duration {duration}")
                     start_times.append(start)
                     end_times.append(end)
                     day_duration += duration
                     tags.append(tag)
-                    
 
         start, end, duration, tag = get_start_end_duration_item(item)
         if isinstance(duration, dt.timedelta):
@@ -99,8 +99,6 @@ def get_start_end_duration_ntasks_day(filename):
             end_times.append(end)
             day_duration += duration
             tags.append(tag)
-
-        
 
     start_times.sort()
     end_times.sort()
@@ -175,7 +173,7 @@ def plot_durations(dates, durations):
 
 @st.cache(suppress_st_warning=True, hash_funcs={go.Figure: lambda _: None})
 def plot_field(dates, y, ytext):
-    
+
     fig = make_subplots(
         rows=1,
         cols=1,
@@ -195,7 +193,6 @@ def plot_field(dates, y, ytext):
     fig.append_trace(trace, row=1, col=1)
     fig.update_layout(hovermode="x")
     return fig
-
 
 
 if __name__ == "__main__":
@@ -219,15 +216,21 @@ if __name__ == "__main__":
     months = []
     days = []
     tags = []
-    #genre = st.radio("Aggregate", ("Daily", "Monthly", "Yearly"))
+    # genre = st.radio("Aggregate", ("Daily", "Monthly", "Yearly"))
     files_df = []
     for filename in files:
         date = filename.split("/")[-1].split(".org")[0]
         month = date.split("-")[1]
         year = date.split("-")[0]
         day = date.split("-")[2]
-        
-        start, end, duration, num_tasks, tag_per_day = get_start_end_duration_ntasks_day(filename)
+
+        (
+            start,
+            end,
+            duration,
+            num_tasks,
+            tag_per_day,
+        ) = get_start_end_duration_ntasks_day(filename)
         if isinstance(duration, dt.timedelta):
             days.append(day)
             years.append(year)
@@ -270,30 +273,39 @@ if __name__ == "__main__":
     st.plotly_chart(fig1, use_container_width=True)
     st.markdown("--------")
     c1, c2 = st.columns((1, 1))
-    
+
     monthly = df.groupby(["month", "year"])
-    months =   monthly.groups.keys()
-    #months.extend(('04', '2022'))
-    
+    months = monthly.groups.keys()
+    # months.extend(('04', '2022'))
+
     choose_month = c1.selectbox("Month", months)
     choose_field = c2.selectbox("Field", ("duration", "tasks", "start", "end"))
     d_mean, d_std, d_sum, d_min, d_max = monthly.get_group(choose_month)[
         choose_field
     ].agg([np.mean, np.std, np.sum, np.min, np.max])
 
-    fig = plot_field(monthly.get_group(choose_month)["date"],
-                     monthly.get_group(choose_month)[choose_field],
-                     choose_field)
-    c2.plotly_chart(fig, use_container_width=True)    
-    fig = plot_field(np.unique(df["month"]),
-                     df.groupby("month")[choose_field].mean(),
-                     choose_field)
+    fig = plot_field(
+        monthly.get_group(choose_month)["date"],
+        monthly.get_group(choose_month)[choose_field],
+        choose_field,
+    )
+    c2.plotly_chart(fig, use_container_width=True)
+    fig = plot_field(
+        np.unique(df["month"]), df.groupby("month")[choose_field].mean(), choose_field
+    )
     c1.plotly_chart(fig, use_container_width=True)
-    count = monthly.get_group(choose_month)[choose_field].count()
 
-    c1.write(f"## Date {choose_month[0]}/{choose_month[1]}")
-    c1.write(f"#### {choose_field}")
-    c1.write(
+    fig = plot_field(
+        np.unique(df["month"]),
+        df.groupby("month")[choose_field].count(),
+        "working days",
+    )
+    c1.plotly_chart(fig, use_container_width=True)
+
+    count = monthly.get_group(choose_month)[choose_field].count()
+    c2.write(f"## Date {choose_month[0]}/{choose_month[1]}")
+    c2.write(f"#### {choose_field}")
+    c2.write(
         f"""
     - working days: {count}
     - sum: {d_sum}
@@ -303,8 +315,7 @@ if __name__ == "__main__":
     """
     )
 
-    #c1.code(monthly.get_group(choose_month)[choose_field] )
-
+    # c1.code(monthly.get_group(choose_month)[choose_field] )
 
     st.header("Summary")
     st.dataframe(df)
