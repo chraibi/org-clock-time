@@ -65,7 +65,7 @@ def seconds_time(seconds):
     return hours, minutes, seconds
 
 
-def get_start_end_duration_ntasks_day(filename):
+def parse_day(filename):
     start_times = []
     end_times = []
     tags = []
@@ -85,7 +85,7 @@ def get_start_end_duration_ntasks_day(filename):
                     logging.warning(f"item  <{c.heading}> not done yet!")
                     continue
 
-                start, end, duration, tag = get_start_end_duration_item(c)
+                start, end, duration, tag = parse_item(c)
                 if isinstance(duration, dt.timedelta):
                     # print(f"start {start}, end {end},  duration {duration}")
                     start_times.append(start)
@@ -93,7 +93,11 @@ def get_start_end_duration_ntasks_day(filename):
                     day_duration += duration
                     tags.append(tag)
 
-        start, end, duration, tag = get_start_end_duration_item(item)
+        start, end, duration, tag = parse_item(item)
+        
+        if type(start) is  dt.datetime:
+            if start.day != end.day:
+                st.warning((start.day, end.day))
         if isinstance(duration, dt.timedelta):
             start_times.append(start)
             end_times.append(end)
@@ -108,7 +112,7 @@ def get_start_end_duration_ntasks_day(filename):
     return -1, -1, -1, -1, []
 
 
-def get_start_end_duration_item(item):
+def parse_item(item):
     clocks = item.clock
     duration = dt.timedelta(seconds=0)
     start_times = []
@@ -120,6 +124,10 @@ def get_start_end_duration_item(item):
         return -1, -1, -1, []
 
     for c in clocks:
+        if c.start is None or c.end is None:
+            st.error(f"Can not calculate direction for item: {item}")
+            st.stop()
+
         duration += c.duration
         start_times.append(c.start)
         end_times.append(c.end)
@@ -157,7 +165,7 @@ def plot_durations(dates, durations):
         x_title="Day",
         y_title="Duration / h",
     )
-
+    print("bugdates: ", dates)
     trace = go.Scatter(
         x=dates,
         y=durations_hour,
@@ -207,6 +215,8 @@ if __name__ == "__main__":
     dfiles = "/Users/chraibi/Dropbox/Orgfiles/org-files/org-roam/daily/*.org"
     files = glob.glob(dfiles)
     files.sort()
+
+    
     durations = []
     dates = []
     tasks = []
@@ -218,24 +228,30 @@ if __name__ == "__main__":
     tags = []
     # genre = st.radio("Aggregate", ("Daily", "Monthly", "Yearly"))
     files_df = []
+    print("Mohcine")
+    for filename in files:
+        date = filename.split("/")[-1].split(".org")[0]
+        print(date)
+
+    print("------------------------------")
+        
     for filename in files:
         date = filename.split("/")[-1].split(".org")[0]
         month = date.split("-")[1]
         year = date.split("-")[0]
         day = date.split("-")[2]
-
         (
             start,
             end,
             duration,
             num_tasks,
             tag_per_day,
-        ) = get_start_end_duration_ntasks_day(filename)
+        ) = parse_day(filename)
         if isinstance(duration, dt.timedelta):
             days.append(day)
             years.append(year)
             months.append(month)
-            durations.append(duration.seconds)
+            durations.append(duration.seconds)        
             dates.append(start.date())
             tasks.append(num_tasks)
             end_times.append(end.hour)
@@ -244,6 +260,8 @@ if __name__ == "__main__":
             files_df.append(filename.split("/")[-1])
         else:
             logging.warning(f"hmm {filename}")
+            
+
     df = pd.DataFrame(
         {
             "files": files_df,
@@ -258,6 +276,8 @@ if __name__ == "__main__":
             # "tags": tags
         }
     )
+    st.header("Dates")
+    st.dataframe(df[::-1])
     fig2 = plot_durations(dates, durations)
     t = make_title(durations)
     st.header(t)
