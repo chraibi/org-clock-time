@@ -2,7 +2,7 @@ import datetime as dt
 import glob
 import os
 from pathlib import Path
-
+from datetime import datetime
 import lovely_logger as logging
 
 import numpy as np
@@ -123,18 +123,20 @@ def parse_item(item):
 
     for c in clocks:
         if c.start is None or c.end is None:
-            st.error(f"Can not calculate duration for item: {item}")
-            st.stop()
-
-        duration += c.duration
-        start_times.append(c.start)
-        end_times.append(c.end)
-        logging.info(f">> <{item.heading}>, start {c.start}, {c.duration}")
+            st.warning(f"Can not calculate duration for item: {item}")
+            #st.stop()
+        else:
+            duration += c.duration
+            start_times.append(c.start)
+            end_times.append(c.end)
+            logging.info(f">> <{item.heading}>, start {c.start}, {c.duration}")
 
     start_times.sort()
     end_times.sort()
-    return start_times[0], end_times[-1], duration, tag
-
+    if start_times and end_times:
+        return start_times[0], end_times[-1], duration, tag
+    else:
+        return [], [], 0, tag
 
 @st.cache(suppress_st_warning=True, hash_funcs={go.Figure: lambda _: None})
 def plot_histogram(df, nbins):
@@ -201,11 +203,11 @@ def plot_field(dates, y, xtext, ytext, working_days=0):
     if ytext == "Sum duration":
         trace2 = go.Scatter(
             x=dates,
-            y=working_days*7,
+            y=7*4*5*np.ones(len(dates)),
             mode="lines+markers",
             showlegend=True,
             line=dict(width=3, color="red"),
-            name="7h per day",
+            name="7h*4w*5d",
             marker=dict(size=10),
         )
         fig.append_trace(trace2, row=1, col=1)
@@ -240,10 +242,8 @@ if __name__ == "__main__":
     tags = []
     # genre = st.radio("Aggregate", ("Daily", "Monthly", "Yearly"))
     files_df = []
-    print("Mohcine")
     for filename in files:
         date = filename.split("/")[-1].split(".org")[0]
-        print(date)
 
     print("------------------------------")
     for filename in files:
@@ -290,7 +290,8 @@ if __name__ == "__main__":
     c1, c2 = st.columns((1, 1))
 
     monthly = df.groupby(["month", "year"])
-    months = list(reversed(monthly.groups.keys()))
+    months = sorted(monthly.groups.keys(), key=lambda x: datetime.strptime(f"{x[1]}-{x[0]}", "%Y-%m"), reverse=True)
+    #months = list(reversed(monthly.groups.keys()))
     # months.extend(('04', '2022'))
 
     choose_month = c1.selectbox("Month", months)
